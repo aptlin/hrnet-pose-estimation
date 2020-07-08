@@ -8,6 +8,8 @@
 # for the `pose_hrnet_w48` model trained on COCO
 # ============================================================================== 
 
+set -e
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 COCOAPI=$DIR/cocoapi
 WEIGHTS=$DIR/scratchpad/weights
