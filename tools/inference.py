@@ -270,7 +270,7 @@ def parse_args():
     # general
     parser.add_argument("--cfg", type=str, required=True)
     parser.add_argument("--videoFile", type=str, required=True)
-    parser.add_argument("--outputDir", type=str, default="./scrpatchpad/output/")
+    parser.add_argument("--outputDir", type=str, default="./scratchpad/output/")
     parser.add_argument(
         "--viz",
         type=str2bool,
