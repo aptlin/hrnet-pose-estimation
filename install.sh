@@ -15,10 +15,11 @@ WEIGHTS=$DIR/scratchpad/weights
 poetry install
 cd $DIR/lib && make
 
-cd $DIR && git clone https://github.com/cocodataset/cocoapi.git $COCOAPI
-cd $COCOAPI/PythonAPI && python3 setup.py install --user
+cd $DIR 
+[[ -d $COCOAPI ]] || (git clone https://github.com/cocodataset/cocoapi.git $COCOAPI && cd $COCOAPI/PythonAPI && python3 setup.py install --user)
 
 cd $DIR && mkdir -p $WEIGHTS && cd $WEIGHTS
 
-wget https://www.dropbox.com/s/nxbkajwwzptxwp2/pose_hrnet_w48_384x288.pth?raw=1
+[[ -f pose_hrnet_w48_384x288.pth ]] || wget -O pose_hrnet_w48_384x288.pth https://www.dropbox.com/s/nxbkajwwzptxwp2/pose_hrnet_w48_384x288.pth?raw=1
+
 cd $DIR
