@@ -395,6 +395,7 @@ def main():
                     continue
 
                 image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+                image_rgb = cv2.resize(image_rgb, (cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1]))
 
                 # Clone 2 image for person detection and pose estimation
                 if cfg.DATASET.COLOR_RGB:
