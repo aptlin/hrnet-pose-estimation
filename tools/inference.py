@@ -446,10 +446,6 @@ def main():
                 cv2.LINE_AA,
             )
 
-            cv2.imshow("pos", image_debug)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-
         csv_output_rows.append(new_csv_row)
         if args.viz:
             img_file = os.path.join(pose_dir, "pose_{:08d}.jpg".format(count))
