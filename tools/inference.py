@@ -17,8 +17,8 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision
 import torchvision.transforms as transforms
-from tqdm import tqdm
 from PIL import Image
+from tqdm import tqdm
 
 import _init_paths
 import models
@@ -280,7 +280,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train keypoints network")
     # general
     parser.add_argument("--cfg", type=str, required=True)
-    parser.add_argument("--videoFile", type=str, required=True)
+    parser.add_argument("--inputList", type=str, required=True)
     parser.add_argument("--outputDir", type=str, default="./scratchpad/output/")
     parser.add_argument(
         "--viz",
@@ -333,7 +333,6 @@ def main():
 
     args = parse_args()
     update_config(cfg, args)
-    pose_dir = prepare_output_dirs(args.outputDir)
     csv_output_rows = []
 
     box_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
@@ -351,150 +350,158 @@ def main():
     pose_model.eval()
 
     # Loading an video
-    vidcap = cv2.VideoCapture(args.videoFile)
-    fps = vidcap.get(cv2.CAP_PROP_FPS)
-    skip_frame_cnt = round(fps / args.inferenceFps)
-    frame_width = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    if args.viz:
-        if fps < args.inferenceFps:
-            print(
-                "desired inference fps is "
-                + str(args.inferenceFps)
-                + " but video fps is "
-                + str(fps)
-            )
-            exit()
-        outcap = cv2.VideoWriter(
-            "{}/{}_pose.avi".format(
-                args.outputDir, os.path.splitext(os.path.basename(args.videoFile))[0]
-            ),
-            cv2.VideoWriter_fourcc("M", "J", "P", "G"),
-            int(skip_frame_cnt),
-            (frame_width, frame_height),
-        )
 
-    count = 0
-    for image_bgr in frame_iter(vidcap, "Progress"):
-        total_now = time.time()
-        count += 1
+    with open(args.inputList, "r") as input_file:
+        for line in tqdm(input_file, desc="Processed", unit="file"):
+            video_fp, video_output = line.split(",")
+            video_dir = os.path.join(args.outputDir, video_output)
+            os.makedirs(video_dir, exist_ok=True)
+            pose_dir = prepare_output_dirs(video_dir)
+            vidcap = cv2.VideoCapture(video_fp)
+            fps = vidcap.get(cv2.CAP_PROP_FPS)
+            skip_frame_cnt = round(fps / args.inferenceFps)
+            frame_width = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            if fps < args.inferenceFps:
+                print(
+                    "desired inference fps is "
+                    + str(args.inferenceFps)
+                    + " but video fps is "
+                    + str(fps)
+                )
+                exit()
+            if args.viz:
+                outcap = cv2.VideoWriter(
+                    "{}/{}_pose.avi".format(
+                        video_dir, os.path.splitext(os.path.basename(video_fp))[0],
+                    ),
+                    cv2.VideoWriter_fourcc("M", "J", "P", "G"),
+                    int(skip_frame_cnt),
+                    (frame_width, frame_height),
+                )
 
-        if image_bgr is None:
-            continue
+            count = 0
+            for image_bgr in frame_iter(vidcap, "Progress"):
+                total_now = time.time()
+                count += 1
 
-        if count % skip_frame_cnt != 0:
-            continue
+                if image_bgr is None:
+                    continue
 
-        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+                if count % skip_frame_cnt != 0:
+                    continue
 
-        # Clone 2 image for person detection and pose estimation
-        if cfg.DATASET.COLOR_RGB:
-            image_per = image_rgb.copy()
-            image_pose = image_rgb.copy()
-        else:
-            image_per = image_bgr.copy()
-            image_pose = image_bgr.copy()
+                image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        # Clone 1 image for debugging purpose
-        image_debug = image_bgr.copy()
+                # Clone 2 image for person detection and pose estimation
+                if cfg.DATASET.COLOR_RGB:
+                    image_per = image_rgb.copy()
+                    image_pose = image_rgb.copy()
+                else:
+                    image_per = image_bgr.copy()
+                    image_pose = image_bgr.copy()
 
-        # object detection box
-        now = time.time()
-        pred_boxes = get_person_detection_boxes(box_model, image_per, threshold=0.9)
-        then = time.time()
+                # Clone 1 image for debugging purpose
+                image_debug = image_bgr.copy()
 
-        # Can not find people. Move to next frame
-        if not pred_boxes:
-            count += 1
-            continue
+                # object detection box
+                now = time.time()
+                pred_boxes = get_person_detection_boxes(
+                    box_model, image_per, threshold=0.9
+                )
+                then = time.time()
 
-        if args.viz and args.writeBoxFrames:
-            for box in pred_boxes:
-                cv2.rectangle(
-                    image_debug, box[0], box[1], color=(0, 255, 0), thickness=3
-                )  # Draw Rectangle with the coordinates
+                # Can not find people. Move to next frame
+                if not pred_boxes:
+                    count += 1
+                    continue
 
-        # pose estimation : for multiple people
-        centers = []
-        scales = []
-        for box in pred_boxes:
-            center, scale = box_to_center_scale(
-                box, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1]
-            )
-            centers.append(center)
-            scales.append(scale)
+                if args.viz and args.writeBoxFrames:
+                    for box in pred_boxes:
+                        cv2.rectangle(
+                            image_debug, box[0], box[1], color=(0, 255, 0), thickness=3
+                        )  # Draw Rectangle with the coordinates
 
-        now = time.time()
-        pose_preds = get_pose_estimation_prediction(
-            pose_model, image_pose, centers, scales, transform=pose_transform
-        )
-        then = time.time()
-
-        new_csv_row = []
-        for coords in pose_preds:
-            # Draw each point on image
-            for idx, coord in enumerate(coords):
-                x_coord, y_coord = int(coord[0]), int(coord[1])
-                new_csv_row.extend([x_coord, y_coord])
-                if args.viz:
-                    cv2.circle(
-                        image_debug,
-                        (x_coord, y_coord),
-                        4,
-                        (255, 31 * (idx + 1) % 256, 0),
-                        2,
+                # pose estimation : for multiple people
+                centers = []
+                scales = []
+                for box in pred_boxes:
+                    center, scale = box_to_center_scale(
+                        box, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1]
                     )
-                    if idx in RELEVANT_KEYPOINTS:
-                        cv2.putText(
-                            image_debug,
-                            COCO_KEYPOINT_INDEXES[idx],
-                            (x_coord, y_coord),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            1,
-                            (255, 0, 255),
-                            2,
-                            cv2.LINE_AA,
-                        )
+                    centers.append(center)
+                    scales.append(scale)
 
-        total_then = time.time()
+                now = time.time()
+                pose_preds = get_pose_estimation_prediction(
+                    pose_model, image_pose, centers, scales, transform=pose_transform
+                )
+                then = time.time()
 
-        if args.viz:
-            text = "{:03.2f} sec".format(total_then - total_now)
-            cv2.putText(
-                image_debug,
-                text,
-                (100, 50),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 0, 255),
-                2,
-                cv2.LINE_AA,
+                new_csv_row = []
+                for coords in pose_preds:
+                    # Draw each point on image
+                    for idx, coord in enumerate(coords):
+                        x_coord, y_coord = int(coord[0]), int(coord[1])
+                        new_csv_row.extend([x_coord, y_coord])
+                        if args.viz:
+                            cv2.circle(
+                                image_debug,
+                                (x_coord, y_coord),
+                                4,
+                                (255, 31 * (idx + 1) % 256, 0),
+                                2,
+                            )
+                            if idx in RELEVANT_KEYPOINTS:
+                                cv2.putText(
+                                    image_debug,
+                                    COCO_KEYPOINT_INDEXES[idx],
+                                    (x_coord, y_coord),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    1,
+                                    (255, 0, 255),
+                                    2,
+                                    cv2.LINE_AA,
+                                )
+
+                total_then = time.time()
+
+                if args.viz:
+                    text = "{:03.2f} sec".format(total_then - total_now)
+                    cv2.putText(
+                        image_debug,
+                        text,
+                        (100, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (0, 0, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
+
+                csv_output_rows.append(new_csv_row)
+                if args.viz:
+                    img_file = os.path.join(pose_dir, "pose_{:08d}.jpg".format(count))
+                    cv2.imwrite(img_file, image_debug)
+                    outcap.write(image_debug)
+
+            # write csv
+            csv_headers = ["frame"]
+            for keypoint in COCO_KEYPOINT_INDEXES.values():
+                csv_headers.extend([keypoint + "_x", keypoint + "_y"])
+
+            csv_output_filename = os.path.join(
+                video_dir,
+                os.path.splitext(os.path.basename(video_fp))[0] + "-pose-data.csv",
             )
+            with open(csv_output_filename, "w", newline="") as csvfile:
+                csvwriter = csv.writer(csvfile)
+                csvwriter.writerow(csv_headers)
+                csvwriter.writerows(csv_output_rows)
 
-        csv_output_rows.append(new_csv_row)
-        if args.viz:
-            img_file = os.path.join(pose_dir, "pose_{:08d}.jpg".format(count))
-            cv2.imwrite(img_file, image_debug)
-            outcap.write(image_debug)
-
-    # write csv
-    csv_headers = ["frame"]
-    for keypoint in COCO_KEYPOINT_INDEXES.values():
-        csv_headers.extend([keypoint + "_x", keypoint + "_y"])
-
-    csv_output_filename = os.path.join(
-        args.outputDir,
-        os.path.splitext(os.path.basename(args.videoFile))[0] + "-pose-data.csv",
-    )
-    with open(csv_output_filename, "w", newline="") as csvfile:
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(csv_headers)
-        csvwriter.writerows(csv_output_rows)
-
-    vidcap.release()
-    if args.viz:
-        outcap.release()
-        cv2.destroyAllWindows()
+            vidcap.release()
+            if args.viz:
+                outcap.release()
 
 
 if __name__ == "__main__":
