@@ -425,11 +425,27 @@ def main():
         new_csv_row = []
         for coords in pose_preds:
             # Draw each point on image
-            for coord in coords:
+            for idx, coord in enumerate(coords):
                 x_coord, y_coord = int(coord[0]), int(coord[1])
                 new_csv_row.extend([x_coord, y_coord])
                 if args.viz:
-                    cv2.circle(image_debug, (x_coord, y_coord), 4, (255, 0, 0), 2)
+                    cv2.circle(
+                        image_debug,
+                        (x_coord, y_coord),
+                        4,
+                        (255, 31 * (idx + 1) % 256, 0),
+                        2,
+                    )
+                    cv2.putText(
+                        image_debug,
+                        COCO_KEYPOINT_INDEXES[idx],
+                        (x_coord, y_coord),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (255, 0, 255),
+                        2,
+                        cv2.LINE_AA,
+                    )
 
         total_then = time.time()
 
