@@ -375,12 +375,11 @@ def main():
         )
 
     count = 0
-    while frame_iter(vidcap, "Progress"):
+    for image_bgr in frame_iter(vidcap, "Progress"):
         total_now = time.time()
-        ret, image_bgr = vidcap.read()
         count += 1
 
-        if not ret:
+        if not image_bgr:
             continue
 
         if count % skip_frame_cnt != 0:
