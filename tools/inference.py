@@ -352,7 +352,10 @@ def main():
     # Loading an video
 
     with open(args.inputList, "r") as input_file:
-        for line in tqdm(input_file, desc="Processed", unit="file"):
+        num_lines = sum(1 for line in input_file)
+
+    with open(args.inputList, "r") as input_file:
+        for line in tqdm(input_file, desc="Processed", unit="file", total=num_lines):
             video_fp, video_output = line.split(",")
             video_dir = os.path.join(args.outputDir, video_output)
             os.makedirs(video_dir, exist_ok=True)
