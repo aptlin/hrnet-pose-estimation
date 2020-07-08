@@ -33,7 +33,7 @@ from utils.transforms import get_affine_transform
 
 CTX = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-
+RELEVANT_KEYPOINTS = [5, 6, 11, 12]
 COCO_KEYPOINT_INDEXES = {
     0: "nose",
     1: "left_eye",
@@ -436,16 +436,17 @@ def main():
                         (255, 31 * (idx + 1) % 256, 0),
                         2,
                     )
-                    cv2.putText(
-                        image_debug,
-                        COCO_KEYPOINT_INDEXES[idx],
-                        (x_coord, y_coord),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1,
-                        (255, 0, 255),
-                        2,
-                        cv2.LINE_AA,
-                    )
+                    if idx in RELEVANT_KEYPOINTS:
+                        cv2.putText(
+                            image_debug,
+                            COCO_KEYPOINT_INDEXES[idx],
+                            (x_coord, y_coord),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1,
+                            (255, 0, 255),
+                            2,
+                            cv2.LINE_AA,
+                        )
 
         total_then = time.time()
 
