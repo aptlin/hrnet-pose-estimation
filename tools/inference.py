@@ -1,35 +1,33 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import argparse
 import csv
 import os
 import shutil
+import sys
+import time
 
-from PIL import Image
+import cv2
+import numpy as np
 import torch
-import torch.nn.parallel
 import torch.backends.cudnn as cudnn
+import torch.nn.parallel
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
-import torchvision.transforms as transforms
 import torchvision
-import cv2
-import numpy as np
-
-import sys
-
-sys.path.append("../lib")
-import time
+import torchvision.transforms as transforms
+import tqdm
+from PIL import Image
 
 import _init_paths
 import models
-from config import cfg
-from config import update_config
+from config import cfg, update_config
 from core.inference import get_final_preds
 from utils.transforms import get_affine_transform
+
+sys.path.append("../lib")
+
 
 CTX = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -147,6 +145,19 @@ COCO_INSTANCE_CATEGORY_NAMES = [
     "hair drier",
     "toothbrush",
 ]
+
+
+def frame_iter(capture, description):
+    def _iterator():
+        while capture.grab():
+            yield capture.retrieve()[1]
+
+    return tqdm(
+        _iterator(),
+        desc=description,
+        total=int(capture.get(cv2.CAP_PROP_FRAME_COUNT)),
+        unit="frames",
+    )
 
 
 def get_person_detection_boxes(model, img, threshold=0.5):
@@ -364,7 +375,7 @@ def main():
         )
 
     count = 0
-    while vidcap.isOpened():
+    while frame_iter(vidcap, "Progress"):
         total_now = time.time()
         ret, image_bgr = vidcap.read()
         count += 1
@@ -392,7 +403,6 @@ def main():
         now = time.time()
         pred_boxes = get_person_detection_boxes(box_model, image_per, threshold=0.9)
         then = time.time()
-        print("Found a person bbox in: {} sec".format(then - now))
 
         # Can not find people. Move to next frame
         if not pred_boxes:
@@ -420,7 +430,6 @@ def main():
             pose_model, image_pose, centers, scales, transform=pose_transform
         )
         then = time.time()
-        print("Found poses in: {} sec".format(then - now))
 
         new_csv_row = []
         for coords in pose_preds:
