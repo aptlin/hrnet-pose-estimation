@@ -379,7 +379,7 @@ def main():
         total_now = time.time()
         count += 1
 
-        if not image_bgr:
+        if image_bgr is None:
             continue
 
         if count % skip_frame_cnt != 0:
