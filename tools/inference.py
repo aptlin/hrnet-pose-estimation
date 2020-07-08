@@ -17,7 +17,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision
 import torchvision.transforms as transforms
-import tqdm
+from tqdm import tqdm
 from PIL import Image
 
 import _init_paths
